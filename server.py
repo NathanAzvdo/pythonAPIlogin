@@ -2,9 +2,9 @@ import uvicorn
 
 def main():
     uvicorn.run(
-        app = "ticket.api.app",
+        "loginSystem.api:app",
         host="localhost",
-        port=8000,
+        port=8500,
         reload=True,
     )
     
