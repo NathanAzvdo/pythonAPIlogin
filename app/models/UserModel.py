@@ -1,7 +1,8 @@
 from sqlalchemy import select
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
 
-from loginSystem.database import SessionLocal, engine
+from app.database import SessionLocal, engine
+
 
 Base = declarative_base()
 
@@ -14,7 +15,6 @@ class DB_user(Base):
     password: Mapped[str] = mapped_column(nullable=False)
     Eadmin: Mapped[int] = mapped_column(default=0)
     
-    Base = declarative_base()
     Base.metadata.create_all(bind=engine)
     
     

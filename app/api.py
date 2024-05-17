@@ -2,8 +2,8 @@ from starlette.staticfiles import StaticFiles
 from pathlib import Path
 from fastapi import FastAPI
 from sqlalchemy.orm import Session, declarative_base
-from loginSystem.routes import users
-from loginSystem.database import SessionLocal, engine
+from app.routes import users
+from app.database import SessionLocal, engine
 
 
 

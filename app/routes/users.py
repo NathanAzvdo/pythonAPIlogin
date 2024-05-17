@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, FastAPI
 from passlib.context import CryptContext
-from loginSystem.models import DB_user
-from loginSystem.userSchema import UserSchema
-from loginSystem.database import SessionLocal, engine
+from app.models.UserModel import DB_user
+from app.schemas.UserSchema import UserSchema
+from app.database import SessionLocal, engine
 from sqlalchemy.orm import Session, declarative_base
 from typing import Annotated
 
