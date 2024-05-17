@@ -14,6 +14,9 @@ class DB_user(Base):
     password: Mapped[str] = mapped_column(nullable=False)
     Eadmin: Mapped[int] = mapped_column(default=0)
     
+    Base = declarative_base()
+    Base.metadata.create_all(bind=engine)
+    
     
     
 session = SessionLocal()
