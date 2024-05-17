@@ -6,6 +6,8 @@ from app.database import SessionLocal, engine
 from sqlalchemy.orm import Session, declarative_base
 from typing import Annotated
 
+Base = declarative_base()
+Base.metadata.create_all(bind=engine)
 
 
 router = APIRouter()
@@ -26,21 +28,25 @@ def ping() -> str:
     return 'pong'
 
 @router.get('/getUser/{id}')
-def getUser(id:int, db: Annotated[Session, Depends(get_session)]):
+def getUserbyId(id:int, db: Annotated[Session, Depends(get_session)]):
     user = db.get(DB_user, id)
     if user is None:
-        raise HTTPException(status_code=404, detail=f'Client not found!')
+        raise HTTPException(status_code=404, detail='Client not found!')
     return user
 
 @router.post('/createUser')
-def createUs(user_data: UserSchema, db: Annotated[Session, Depends(get_session)]):
+def createUser(user_data: UserSchema, db: Annotated[Session, Depends(get_session)]):
+    if validateUserExists(db, user_data.email):
+        raise HTTPException(status_code=409, detail='Email already exists')
     hashed_password = generate_hash(user_data.password)
-    user = db.query(DB_user).filter(DB_user.email == user_data.email or DB_user.name == user_data.name).first()
-    if user:
-        raise HTTPException(status_code=400, detail="User already exists")
     new_user = DB_user(name=user_data.name, email=user_data.email, password=hashed_password)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
     
     return 'User saved!', new_user
+
+def validateUserExists(db, email):
+    user_email = db.query(DB_user).filter(DB_user.email == email).first()
+    return True if user_email else False
+
