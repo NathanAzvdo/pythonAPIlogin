@@ -14,7 +14,6 @@ class DB_user(Base):
     name: Mapped[str] = mapped_column(nullable=False)
     email: Mapped[str] = mapped_column(unique=True, nullable=False)
     password: Mapped[str] = mapped_column(nullable=False)
-    Eadmin: Mapped[int] = mapped_column(default=0)
     
     
     
