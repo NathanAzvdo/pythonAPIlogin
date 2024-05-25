@@ -1,11 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import HTTPException, Depends
 from sqlalchemy.orm import Session
-from typing import List
 from passlib.context import CryptContext
 from app.models.UserModel import DB_user
 from app.schemas.UserSchema import UserSchema
+from app.schemas.Token import Token
 from app.database import SessionLocal
 import re
+from datetime import datetime, timedelta
+import jwt
+
+SECRET_KEY = "your_secret_key"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -16,37 +22,52 @@ def get_session() -> Session:
     finally:
         session.close()
 
-def create_user(user_data: UserSchema, db: Session) -> dict:
+def create_user(user_data: UserSchema, db: Session = Depends(get_session)) -> dict:
     errors = validate_entries(db, user_data)
     if errors:
         raise HTTPException(status_code=400, detail=errors)
     
-    return saveUser(user_data, db)
+    return save_user(user_data, db)
 
-def saveUser(user_data, db) -> dict:
-    hashed_password = generate_hash(user_data.password)
-    new_user = DB_user(name=user_data.name, email=user_data.email, password=hashed_password)
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return {'message': 'User saved!', 'user': new_user}
+def validate_entries(db: Session, user_data: UserSchema) -> list:
+    errors = []
+    errors.extend(validate_email_exists(db, user_data.email))
+    errors.extend(validate_email_format(user_data.email))
+    errors.extend(validate_name(user_data.name))
+    errors.extend(validate_password(user_data.password))
+    return errors
 
-def validate_email_exists(db: Session, email: str) -> List[str]:
-    user_email = db.query(DB_user).filter(DB_user.email == email).first()
-    return ['Email already registered'] if user_email else []
+def save_user(user_data, db) -> dict:
+    try:
+        hashed_password = generate_hash(user_data.password)
+        new_user = DB_user(name=user_data.name, email=user_data.email, password=hashed_password)
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return {'message': 'User saved!', 'user': new_user}
+    except Exception as e:
+        db.roolback()
+        raise HTTPException(status_code=500, detail="Error to save user, try again later") from e 
 
-def validate_email_format(email: str) -> List[str]:
+def validate_email_exists(db: Session, email: str) -> list:
+    try:
+        user_email = db.query(DB_user).filter(DB_user.email == email).first()
+        return ['Email already registered'] if user_email else []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Error to validate email. try again later!") from e
+
+def validate_email_format(email: str) -> list:
     regex_email = re.compile(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)")
     return ["Invalid email address"] if not regex_email.match(email) else []
 
-def validate_name(name: str) -> List[str]:
+def validate_name(name: str) -> list:
     if not name:
         return ["Name cannot be empty"]
     elif len(name) < 4:
         return ["The name must contain at least 4 characters"]
     return []
 
-def validate_password(password: str) -> List[str]:
+def validate_password(password: str) -> list:
     errors = []
     if len(password) < 8:
         errors.append("The password must have at least 8 characters.")
@@ -56,13 +77,31 @@ def validate_password(password: str) -> List[str]:
         errors.append('The password must contain at least one special character.')
     return errors
 
-def validate_entries(db: Session, user_data: UserSchema) -> List[str]:
-    errors = []
-    errors.extend(validate_email_exists(db, user_data.email))
-    errors.extend(validate_email_format(user_data.email))
-    errors.extend(validate_name(user_data.name))
-    errors.extend(validate_password(user_data.password))
-    return errors
-
 def generate_hash(password: str) -> str:
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     return pwd_context.hash(password)
+
+def authenticate_user(email: str, password: str, db: Session) -> DB_user:
+    user = db.query(DB_user).filter(DB_user.email == email).first()
+    if not user or not verify_password(password, user.password):
+        raise HTTPException(status_code=401, detail="Email/password incorrect")
+    return user
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    return pwd_context.verify(plain_password, hashed_password)
+
+def create_access_token(data: dict, expires_delta: timedelta) -> str:
+    to_encode = data.copy()
+    expire = datetime.utcnow() + expires_delta
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def login_user(user_data: UserSchema, db: Session = Depends(get_session)) -> Token:
+    user = authenticate_user(user_data.email, user_data.password, db)
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
+    return Token(access_token=access_token, token_type="bearer")
