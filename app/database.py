@@ -14,3 +14,11 @@ engine = create_engine(
 )
 
 SessionLocal = sessionmaker(bind=engine)
+
+
+def get_session() -> Session:
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()

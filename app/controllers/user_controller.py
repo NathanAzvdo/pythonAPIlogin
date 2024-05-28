@@ -1,26 +1,29 @@
+# app/controllers/user_controller.py
 from fastapi import HTTPException, Depends
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from app.models.UserModel import DB_user
-from app.schemas.UserSchema import UserSchema
+from app.schemas.UserSchema import UserSchema, UserLoginSchema
 from app.schemas.Token import Token
-from app.database import SessionLocal
+from app.database import get_session
+from pathlib import Path
+from dotenv import load_dotenv
+import os
 import re
 from datetime import datetime, timedelta
 import jwt
 
-SECRET_KEY = "your_secret_key"
-ALGORITHM = "HS256"
+
+
+
+path = Path(__file__).parent.parent
+load_dotenv(f'{path}/config/.env')
+SECRET_KEY = os.environ.get('KEY')
+ALGORITHM = os.environ.get('alg')
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-def get_session() -> Session:
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 def create_user(user_data: UserSchema, db: Session = Depends(get_session)) -> dict:
     errors = validate_entries(db, user_data)
@@ -46,7 +49,7 @@ def save_user(user_data, db) -> dict:
         db.refresh(new_user)
         return {'message': 'User saved!', 'user': new_user}
     except Exception as e:
-        db.roolback()
+        db.rollback()
         raise HTTPException(status_code=500, detail="Error to save user, try again later") from e 
 
 def validate_email_exists(db: Session, email: str) -> list:
@@ -78,8 +81,15 @@ def validate_password(password: str) -> list:
     return errors
 
 def generate_hash(password: str) -> str:
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     return pwd_context.hash(password)
+
+def login_user(user_data: UserLoginSchema, db: Session = Depends(get_session)) -> Token:
+    user = authenticate_user(user_data.email, user_data.password, db)
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
+    return Token(access_token=access_token, token_type="bearer")
 
 def authenticate_user(email: str, password: str, db: Session) -> DB_user:
     user = db.query(DB_user).filter(DB_user.email == email).first()
@@ -88,7 +98,6 @@ def authenticate_user(email: str, password: str, db: Session) -> DB_user:
     return user
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     return pwd_context.verify(plain_password, hashed_password)
 
 def create_access_token(data: dict, expires_delta: timedelta) -> str:
@@ -96,12 +105,10 @@ def create_access_token(data: dict, expires_delta: timedelta) -> str:
     expire = datetime.utcnow() + expires_delta
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    register_token_to_env(encoded_jwt)
     return encoded_jwt
 
-def login_user(user_data: UserSchema, db: Session = Depends(get_session)) -> Token:
-    user = authenticate_user(user_data.email, user_data.password, db)
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
-    return Token(access_token=access_token, token_type="bearer")
+def register_token_to_env(jwt):
+    os.environ['session_token']=jwt
+    print(os.environ.get('session_token'))
+        
